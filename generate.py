@@ -1,52 +1,86 @@
-import requests
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import datetime
 import json
+from tqdm import tqdm
 import os
-from datetime import datetime
-import argparse
+import warnings
 
-# Replace 'yourkey' with your actual API key
-api_key = 'GmeZP9WFhwSc9Qlzf3VNAVYUUNy63dIA'
-base_url = 'https://api.nytimes.com/svc/archive/v1/'
+# Ignore all user warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
-def download_data(start_date, end_date, output_dir):
-    # Ensure output directory exists
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    start_year, start_month = start_date.year, start_date.month
-    end_year, end_month = end_date.year, end_date.month
+# Set environment variable for model cache directory
+os.environ["HF_HOME"] = "path_to_huggingface_cache"
 
-    # Loop through the months and make API calls
-    for year in range(start_year, end_year + 1):
-        for month in range(start_month, 13 if year != end_year else end_month + 1):
-            # Format the URL for the API call
-            url = f'{base_url}{year}/{month}.json?api-key={api_key}'
-            
-            # Make the API call
-            response = requests.get(url)
-            
-            # Check if the request was successful
-            if response.status_code == 200:
-                # Parse the JSON response
-                data = response.json()
-                
-                # Save the data to a file
-                with open(os.path.join(output_dir, f'{year}_{month}.json'), 'w') as outfile:
-                    json.dump(data, outfile)
-                
-                print(f'Downloaded data for {year}-{month}')
-            else:
-                print(f'Error downloading data for {year}-{month}. Status code: {response.status_code}')
+# Replace with your actual API key
+apikey = "YOUR_API_KEY_HERE"
 
-def main():
-    parser = argparse.ArgumentParser(description='Download NYT Archive Data.')
-    parser.add_argument('start_date', type=lambda d: datetime.strptime(d, '%Y-%m'), help='Start date in YYYY-MM format')
-    parser.add_argument('end_date', type=lambda d: datetime.strptime(d, '%Y-%m'), help='End date in YYYY-MM format')
-    parser.add_argument('output_dir', type=str, help='Output directory for the downloaded data')
+# Language models for processing
+lms = [
+    'hf/7B',
+    'hf/13B',
+    'hf/30B',
+    'hf/65B',
+    "mistralai/Mistral-7B-v0.1",
+    "tiiuae/falcon-7b",
+]
 
-    args = parser.parse_args()
-    
-    download_data(args.start_date, args.end_date, args.output_dir)
+# Load article data
+articles = json.load(open('path_to_def_articles/original.json'))
 
-if __name__ == '__main__':
-    main()
+# Process articles with each language model
+for lm in lms:
+    try:
+        model = AutoModelForCausalLM.from_pretrained(lm, device_map="auto", load_in_8bit=True)
+        tokenizer = AutoTokenizer.from_pretrained(lm)
+
+        # Handle lm name for output file
+        lm_name = lm.split('/')[-1] if '/' in lm else lm
+        filename = f"output/{lm_name}.json"
+
+        print('-' * 100)
+        print(f'MODEL: {lm_name}')
+        print('-' * 100)
+
+        output_data = []
+        for index, article in enumerate(tqdm(articles), start=1):
+            article_data = {
+                'id': index,
+                'headline': article['headline'],
+                'lead_paragraph': article['lead_paragraph'],
+                'pub_date': article['pub_date'],
+                'web_url': article['web_url']
+            }
+
+            prompt = f'"{article["abstract"]}"\n{" ".join(article["lead_paragraph"].split(" ")[:3])} '
+            input_ids = tokenizer.encode(prompt, return_tensors='pt').to("cuda")
+
+            sample_outputs = model.generate(
+                input_ids,
+                max_length=200,
+                do_sample=True,
+                top_p=0.9, 
+                early_stopping=True,
+                temperature=0.7,
+                num_return_sequences=1,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.eos_token_id
+            )
+
+            generations = []
+            for i, sample_output in enumerate(sample_outputs, start=1):
+                output = tokenizer.decode(sample_output, skip_special_tokens=True)
+                generations.append({
+                    'id': i,
+                    'headline': article['headline']['main'],
+                    'output': output.split('\n')[1]
+                })
+
+            article_data['generations'] = generations
+            output_data.append(article_data)
+
+        with open(filename, "w") as f:
+            json.dump(output_data, f)
+
+    except Exception as e:
+        print(f'ERROR: {lm_name} - {str(e)}')
+        continue
