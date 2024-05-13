@@ -1,138 +1,52 @@
+import requests
 import json
-import torch, re, os
-from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+import os
 from datetime import datetime
-from typing import List
+import argparse
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['TORCH_USE_CUDA_DSA'] = "1"
+# Replace 'yourkey' with your actual API key
+api_key = 'GmeZP9WFhwSc9Qlzf3VNAVYUUNy63dIA'
+base_url = 'https://api.nytimes.com/svc/archive/v1/'
 
-PAD = '<pad>'
-
-def flatten(list_of_lists):
-    result = list()
-    for item in list_of_lists:
-        result += item 
-    return result
-
-def load_data(filepath):
-    with open(filepath, 'r') as file:
-        return json.load(file)
-
-def save_data(data, filepath):
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    with open(filepath, 'w') as file:
-        json.dump(data, file, default=json_converter)
-
-def json_converter(o):
-    if isinstance(o, datetime):
-        return o.__str__()
-
-
-class Generator:
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    def __init__(self, model_name: str, device: torch.device, articles: str):
-        self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side='left', truncation_size='left')
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        try:
-            self.generator = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', load_in_8bit=True)
-        except OSError:
-            self.generator = AutoModelForCausalLM.from_pretrained(model_name, device_map='auto', load_in_8bit=False)
-            print('No 8bit model available, loading full precision model instead')
-        self.model_size = self.model_name.split('/')[-1] if 'llama' in self.model_name else '7B'
-        self.device = device
-        self.articles = self.read_articles(articles)
-        self.kwargs = None
-
-    def read_articles(self, filepath):
-        with open(filepath, 'r') as file:
-            return json.load(file)
+def download_data(start_date, end_date, output_dir):
+    # Ensure output directory exists
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
-    def get_contexts(self, article: dict) -> List[str]:
-            context = f'''"{article['headline']['main']}"\n{' '.join(article['lead_paragraph'].split(' ')[:3])}'''
-            return context
-    
-    def _generate(self, context: str) -> str:
-        # get input ids
-        tokens = self.tokenizer(context, padding=True, return_tensors='pt', add_special_tokens=False, return_attention_mask=True)
-        inputs, mask = tokens['input_ids'].cuda(), tokens['attention_mask'].cuda()
+    start_year, start_month = start_date.year, start_date.month
+    end_year, end_month = end_date.year, end_date.month
 
-        # get outputs
-        out = self.generator.generate(
-            inputs, attention_mask=mask,
-            max_length=200,
-            do_sample=True,
-            top_p=0.9, temperature=0.7,
-            #early_stopping=True,
-            num_return_sequences=1, repetition_penalty=1.1,
-            pad_token_id=self.tokenizer.pad_token_id,
-        )
-        out = [x.split('\n')[1] for x in self.tokenizer.batch_decode(out.tolist(), skip_special_tokens=True)]
-        return out
-    
-    def estimate_batch_size(self):
-        batch_size = {
-            '7B': 512,   # Example values: 2 GB for batch size of 32
-            '13B': 256,
-            '30B': 128,
-            '65B': 32
-        }
-
-        return batch_size[self.model_size]
-
-
-    def batch_generate(self, batch_size: int): #, batch_size: int): #, save: str):
-        print(f'Total number of sentences: {len(self.articles)}')
-        # get contexts
-        contexts = [self.get_contexts(article) for article in self.articles]
-        with tqdm(total=len(self.articles), desc='Articles') as bar:
-            specs = []
-            for i in range(0, len(contexts), batch_size):
-                specs += self._generate(contexts[i:i+batch_size])
-                bar.update(len(specs))
-        return specs
+    # Loop through the months and make API calls
+    for year in range(start_year, end_year + 1):
+        for month in range(start_month, 13 if year != end_year else end_month + 1):
+            # Format the URL for the API call
+            url = f'{base_url}{year}/{month}.json?api-key={api_key}'
+            
+            # Make the API call
+            response = requests.get(url)
+            
+            # Check if the request was successful
+            if response.status_code == 200:
+                # Parse the JSON response
+                data = response.json()
+                
+                # Save the data to a file
+                with open(os.path.join(output_dir, f'{year}_{month}.json'), 'w') as outfile:
+                    json.dump(data, outfile)
+                
+                print(f'Downloaded data for {year}-{month}')
+            else:
+                print(f'Error downloading data for {year}-{month}. Status code: {response.status_code}')
 
 def main():
-    lms = {
-        #'mistral_7B': 'mistralai/Mistral-7B-v0.1',
-        #'falcon_7B': 'tiiuae/falcon-7b',
-        #'llama_7B': '/home/lys/llama_weights/hf/7B',
-        #'llama_13B': '/home/lys/llama_weights/hf/13B',
-        #'llama_30B': '/home/lys/llama_weights/hf/30B',
-        'llama_65B': '/home/lys/llama_weights/hf/65B',
-    }
-    # read file at postmistral_data/original/articles.json
-    articles = 'postmistral_data/original/articles.json'
-    for model in lms:
-        print('Generating for model {}'.format(model))
-        if not os.path.exists('postmistral_data/' + model):
-            os.mkdir('postmistral_data/' + model)
-        generator = Generator(model_name=lms[model], device='cuda', articles = articles)
-        batch_size = generator.estimate_batch_size()
-        try:
-            sentences = generator.batch_generate(batch_size)
-        except torch.cuda.memory.OutOfMemoryError:
-            print('Out of memory, trying again with smaller batch size')
-            batch_size = batch_size // 2
-            sentences = generator.batch_generate(batch_size)
+    parser = argparse.ArgumentParser(description='Download NYT Archive Data.')
+    parser.add_argument('start_date', type=lambda d: datetime.strptime(d, '%Y-%m'), help='Start date in YYYY-MM format')
+    parser.add_argument('end_date', type=lambda d: datetime.strptime(d, '%Y-%m'), help='End date in YYYY-MM format')
+    parser.add_argument('output_dir', type=str, help='Output directory for the downloaded data')
 
-        print('Finished generating sentences')
-        assert len(sentences) == len(generator.articles)
-
-        for i in range(len(sentences)):
-            generator.articles[i]['lead_paragraph'] = sentences[i]
-        
-        with open('postmistral_data/' + model + '/articles.json', 'w') as f:
-            json.dump(generator.articles, f)
-        
-        # clear GPU memory
-        del generator
-        torch.cuda.empty_cache()
+    args = parser.parse_args()
+    
+    download_data(args.start_date, args.end_date, args.output_dir)
 
 if __name__ == '__main__':
     main()
