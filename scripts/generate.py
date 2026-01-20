@@ -1,8 +1,14 @@
+import sys
+import os
+
+# Add the project root to the python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import datetime
 import json
 from tqdm import tqdm
-import os
+import warnings
 import warnings
 
 # Ignore all user warnings

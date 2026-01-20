@@ -1,6 +1,11 @@
+import sys
+import os
+
+# Add the project root to the python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import requests
 import json
-import os
 from datetime import datetime
 import argparse
 from pathlib import Path
