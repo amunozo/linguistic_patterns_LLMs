@@ -75,6 +75,8 @@ python scripts/parse_classify.py
 
 ## Citation
 
+If you use this code or our findings in your research, please cite:
+
 ```bibtex
 @article{munoz-ortiz-etal-2024-contrasting,
     title = "Contrasting Linguistic Patterns in Human and LLM-Generated News Text",
@@ -94,6 +96,7 @@ python scripts/parse_classify.py
 
 ## Contact
 
+For any questions or issues, please contact the main author:
 **Alberto Muñoz-Ortiz** - [alberto.munoz.ortiz@udc.es](mailto:alberto.munoz.ortiz@udc.es)
 
 ## Acknowledgments
