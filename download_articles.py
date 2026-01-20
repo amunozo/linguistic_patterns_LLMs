@@ -4,8 +4,10 @@ import os
 from datetime import datetime
 import argparse
 
-# Replace 'yourkey' with your actual API key
-api_key = 'YOUR_NYT_API_KEY'
+# Get API key from environment variable
+api_key = os.environ.get('NYT_API_KEY')
+if not api_key:
+    raise ValueError("NYT_API_KEY environment variable is not set. Please set it before running this script.")
 base_url = 'https://api.nytimes.com/svc/archive/v1/'
 
 def download_data(start_date, end_date, output_dir):
