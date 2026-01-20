@@ -3,11 +3,30 @@ import json
 import os
 from datetime import datetime
 import argparse
+from pathlib import Path
+
+# Try to load from .env file if it exists
+env_file = Path(__file__).parent / '.env'
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                if key == 'NYT_API_KEY':
+                    os.environ[key] = value
 
 # Get API key from environment variable
 api_key = os.environ.get('NYT_API_KEY')
-if not api_key:
-    raise ValueError("NYT_API_KEY environment variable is not set. Please set it before running this script.")
+if not api_key or api_key == 'your_api_key_here':
+    raise ValueError(
+        "NYT_API_KEY is not properly configured.\n"
+        "Please follow these steps:\n"
+        "1. Copy .env.example to .env\n"
+        "2. Edit .env and add your NYT API key\n"
+        "3. Get your API key from: https://developer.nytimes.com/get-started"
+    )
+
 base_url = 'https://api.nytimes.com/svc/archive/v1/'
 
 def download_data(start_date, end_date, output_dir):

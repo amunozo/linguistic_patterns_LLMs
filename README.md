@@ -5,5 +5,17 @@ The code in this repository corresponds to the paper "Contrasting Linguistic Pat
 As obtaining the NYT articles need an API key, we decided not to upload the news used on the article directly to a repository. However, they are easily recoverable using the script "download_articles.py".
 The starting date is October 1, 2023, and the final date is January 24, 2024. The user should discard the articles from the rest of the days of January.
 
+#### Setup NYT API Key
+1. Get your API key from [NYT Developer Portal](https://developer.nytimes.com/get-started)
+2. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+3. Edit `.env` and replace `your_api_key_here` with your actual API key
+4. The script will automatically read the key from the environment variable
+
+**Important**: Never commit your `.env` file or expose your API key in code.
+
+#### Generating Articles
 The file "generates_articles.py" can be used to generate the texts. Downloading LLaMa locally and building the model is required, as the weights are not freely available on HuggingFace.
 Our generated articles are stored in the data folder.
