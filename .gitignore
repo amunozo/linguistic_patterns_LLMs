@@ -31,6 +31,18 @@ wheels/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Test and analysis caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments and pipeline outputs
+.venv/
+venv/
+artifacts/
+output/
+
 # IDEs
 .vscode/
 .idea/
